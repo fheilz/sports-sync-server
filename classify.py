@@ -7,6 +7,8 @@ import torch.optim as optim
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 
+torch.manual_seed(1)
+
 # Data Augmentation
 def augment_data(pose_data):
     # Flip along the y-axis (mirroring)
@@ -139,7 +141,9 @@ if __name__ == "__main__":
     # Training
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    train_model(model, train_loader, criterion, optimizer, num_epochs=200)
+    train_model(model, train_loader, criterion, optimizer, num_epochs=1000)
+
+    torch.save(model.state_dict(), 'model.pt')
 
     # Classify new user swings
     user_data_dir = "./user_videos_processed"
