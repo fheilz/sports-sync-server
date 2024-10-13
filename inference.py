@@ -4,14 +4,13 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
-import cv2
-import mediapipe as mp
 
 # Model definition
 class SwingClassifier(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super(SwingClassifier, self).__init__()
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers=1, batch_first=True)
+        self.dropout = nn.Dropout(p=0.5)
         self.fc = nn.Linear(hidden_size, num_classes)
     
     def forward(self, x):
@@ -24,8 +23,11 @@ class SwingClassifier(nn.Module):
         # Pass through LSTM
         _, (h_n, _) = self.lstm(x)
         
+        # Apply dropout
+        out = self.dropout(h_n[-1])
+        
         # Pass the last hidden state through the fully connected layer
-        out = self.fc(h_n[-1])
+        out = self.fc(out)
         return out
 
 # Function to load the trained model
@@ -66,47 +68,6 @@ def get_player_names(data_dir):
                 player_names.append(player_name)
     return player_names
 
-# Function to extract pose data from video
-def extract_pose_from_video(video_path, target_length=160):
-    mp_pose = mp.solutions.pose
-    pose_estimator = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5, min_tracking_confidence=0.5)
-    
-    cap = cv2.VideoCapture(video_path)
-    pose_sequence = []
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        # Convert the BGR image to RGB before processing.
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = pose_estimator.process(image)
-
-        if results.pose_landmarks:
-            landmarks = results.pose_landmarks.landmark
-            frame_data = []
-            for lm in landmarks:
-                frame_data.extend([lm.x, lm.y, lm.z])
-            pose_sequence.append(frame_data)
-        else:
-            # If no landmarks detected, append zeros
-            pose_sequence.append([0.0] * 51)  # 17 joints * 3 coordinates
-
-    cap.release()
-    pose_estimator.close()
-
-    # Convert to numpy array
-    pose_array = np.array(pose_sequence)
-
-    # Pad or truncate to target_length
-    pose_array = pad_sequence(pose_array, target_length)
-
-    # Reshape to (sequence_length, num_joints, num_coordinates)
-    pose_array = pose_array.reshape(target_length, 17, 3)  # Assuming 17 joints
-
-    return pose_array
-
 # Load model and player names at module load
 MODEL_PATH = './model.pt'
 ATHLETE_DATA_DIR = './athlete_videos_processed'
@@ -121,18 +82,21 @@ print("Model loaded successfully.")
 print(f"Detected players: {player_names}")
 
 # Function to process video and return predicted player name
-def process_video(video_path):
+def process_video(npy_path):
     """
-    Processes the input video file and returns the predicted player name.
+    Processes the input .npy file and returns the predicted player name.
 
     Args:
-        video_path (str): Path to the .mp4 video file.
+        npy_path (str): Path to the .npy file containing pose data.
 
     Returns:
         str: Predicted player name.
     """
-    # Extract pose data from the video
-    pose_data = extract_pose_from_video(video_path)
+    if not os.path.exists(npy_path):
+        raise FileNotFoundError(f"Pose data file '{npy_path}' does not exist.")
+    
+    # Load pose data
+    pose_data = np.load(npy_path)
     
     # Normalize the pose data
     pose_data = normalize_data(pose_data)
