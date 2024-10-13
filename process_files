@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# assuming this is run from the root VideoPose3D directory
+# assuming no other files messing everything up
+#
+# place video in available_inputs and then run this file
+
+AVAILABLE_INPUT_DIRECTORY=inference/available_inputs
+WORKING_INPUT_DIRECTORY=inference/inputs
+KEYPOINTS_OUTPUT_DIRECTORY=inference/outputs
+
+OUTPUT_FILENAME=result.mp4
+
+INPUT_VIDEO=$AVAILABLE_INPUT_DIRECTORY/$1
+echo processing $INPUT_VIDEO
+
+ln -s "$PWD/$INPUT_VIDEO" "$WORKING_INPUT_DIRECTORY"
+
+echo $WORKING_INPUT_DIRECTORY
+
+# get output keypoints
+python inference/infer_video_d2.py \
+       --cfg COCO-Keypoints/keypoint_rcnn_R_101_FPN_3x.yaml \
+       --output-dir $KEYPOINTS_OUTPUT_DIRECTORY \
+       --image-ext mp4 \
+       $WORKING_INPUT_DIRECTORY
+
+# create custom dataset
+cd data
+python prepare_data_2d_custom.py \
+        -i ../$KEYPOINTS_OUTPUT_DIRECTORY \
+        -o myvideos
+cd ..
+
+# process keypoints, custom dataset, and input video into an output video
+python run.py \
+        -d custom \
+        -k myvideos \
+        -arc 3,3,3,3,3 \
+        -c checkpoint \
+        --evaluate pretrained_h36m_detectron_coco.bin \
+        --render \
+        --viz-subject $1 \
+        --viz-action custom \
+        --viz-camera 0 \
+        --viz-video $INPUT_VIDEO \
+        --viz-output $OUTPUT_FILENAME \
+        --viz-size 6
+
+unlink $WORKING_INPUT_DIRECTORY/*
+mv $KEYPOINTS_OUTPUT_DIRECTORY/* /old_outputs
+
