@@ -1,0 +1,6 @@
+[submodule "VideoPose3D"]
+	path = VideoPose3D
+	url = git@github.com:fast40/VideoPose3D.git
+[submodule "detectron2"]
+	path = detectron2
+	url = git@github.com:fast40/detectron2.git
