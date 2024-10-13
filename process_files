@@ -9,7 +9,13 @@ AVAILABLE_INPUT_DIRECTORY=inference/available_inputs
 WORKING_INPUT_DIRECTORY=inference/inputs
 KEYPOINTS_OUTPUT_DIRECTORY=inference/outputs
 
-OUTPUT_FILENAME=result.mp4
+FILENAME_WITHOUT_EXTENSION="${1%.*}"
+
+VIDEO_OUTPUT_FILENAME=$FILENAME_WITHOUT_EXTENSION.mp4
+DATA_OUTPUT_FILENAME=$FILENAME_WITHOUT_EXTENSION.npy
+
+echo $VIDEO_OUTPUT_FILENAME
+echo $DATA_OUTPUT_FILENAME
 
 INPUT_VIDEO=$AVAILABLE_INPUT_DIRECTORY/$1
 echo processing $INPUT_VIDEO
@@ -44,8 +50,9 @@ python run.py \
         --viz-action custom \
         --viz-camera 0 \
         --viz-video $INPUT_VIDEO \
-        --viz-output $OUTPUT_FILENAME \
-        --viz-size 6
+        --viz-output $VIDEO_OUTPUT_FILENAME \
+        --viz-size 6 \
+        --viz-export $DATA_OUTPUT_FILENAME
 
 unlink $WORKING_INPUT_DIRECTORY/*
 mv $KEYPOINTS_OUTPUT_DIRECTORY/* /old_outputs
