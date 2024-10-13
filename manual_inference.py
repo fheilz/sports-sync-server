@@ -1,11 +1,7 @@
-# inference.py
-
 import os
 import numpy as np
 import torch
 import torch.nn as nn
-import cv2
-import mediapipe as mp
 
 # Model definition
 class SwingClassifier(nn.Module):
@@ -34,6 +30,12 @@ def load_model(model_path, input_size, hidden_size, num_classes):
     model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
     model.eval()
     return model
+
+# Function to preprocess video data
+def preprocess_video_data(video_data, target_length=160):
+    video_data = normalize_data(video_data)
+    video_data = pad_sequence(video_data, target_length)
+    return torch.FloatTensor(video_data).unsqueeze(0)  # Add batch dimension
 
 # Normalize pose data
 def normalize_data(pose_data):
@@ -66,51 +68,12 @@ def get_player_names(data_dir):
                 player_names.append(player_name)
     return player_names
 
-# Function to extract pose data from video
-def extract_pose_from_video(video_path, target_length=160):
-    mp_pose = mp.solutions.pose
-    pose_estimator = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5, min_tracking_confidence=0.5)
-    
-    cap = cv2.VideoCapture(video_path)
-    pose_sequence = []
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        # Convert the BGR image to RGB before processing.
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = pose_estimator.process(image)
-
-        if results.pose_landmarks:
-            landmarks = results.pose_landmarks.landmark
-            frame_data = []
-            for lm in landmarks:
-                frame_data.extend([lm.x, lm.y, lm.z])
-            pose_sequence.append(frame_data)
-        else:
-            # If no landmarks detected, append zeros
-            pose_sequence.append([0.0] * 51)  # 17 joints * 3 coordinates
-
-    cap.release()
-    pose_estimator.close()
-
-    # Convert to numpy array
-    pose_array = np.array(pose_sequence)
-
-    # Pad or truncate to target_length
-    pose_array = pad_sequence(pose_array, target_length)
-
-    # Reshape to (sequence_length, num_joints, num_coordinates)
-    pose_array = pose_array.reshape(target_length, 17, 3)  # Assuming 17 joints
-
-    return pose_array
-
-# Load model and player names at module load
+# Global variables for model and player names
 MODEL_PATH = './model.pt'
 ATHLETE_DATA_DIR = './athlete_videos_processed'
+USER_VIDEO_DIR = './user_videos_processed'
 
+# Initialize model and player names at startup
 player_names = get_player_names(ATHLETE_DATA_DIR)
 num_classes = len(player_names)
 input_size = 17 * 3  # Number of joints * coordinates (x, y, z)
@@ -120,29 +83,29 @@ model = load_model(MODEL_PATH, input_size, hidden_size, num_classes)
 print("Model loaded successfully.")
 print(f"Detected players: {player_names}")
 
-# Function to process video and return predicted player name
+# Function to run the model on a single video and get the predicted player name
 def process_video(video_path):
     """
-    Processes the input video file and returns the predicted player name.
+    Processes the input video and returns the predicted player name.
 
     Args:
-        video_path (str): Path to the .mp4 video file.
+        video_path (str): Path to the .npy video file.
 
     Returns:
         str: Predicted player name.
     """
-    # Extract pose data from the video
-    pose_data = extract_pose_from_video(video_path)
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(f"Video file '{video_path}' does not exist.")
     
-    # Normalize the pose data
-    pose_data = normalize_data(pose_data)
+    # Load video data
+    video_data = np.load(video_path)
     
-    # Convert to tensor and add batch dimension
-    processed_pose = torch.FloatTensor(pose_data).unsqueeze(0)  # Shape: (1, sequence_length, num_joints, num_coordinates)
+    # Preprocess the video data
+    processed_video = preprocess_video_data(video_data)
     
     # Run the model to get the prediction
     with torch.no_grad():
-        output = model(processed_pose)
+        output = model(processed_video)
         _, predicted = torch.max(output, 1)
         predicted_index = predicted.item()
     
@@ -151,4 +114,16 @@ def process_video(video_path):
         raise IndexError(f"Predicted index {predicted_index} is out of range for player names.")
     
     return player_names[predicted_index]
+
+# Main execution
+if __name__ == "__main__":
+    # Example usage: Process all videos in the user_videos_processed directory
+    for video_file in os.listdir(USER_VIDEO_DIR):
+        if video_file.endswith('.npy'):
+            video_path = os.path.join(USER_VIDEO_DIR, video_file)
+            try:
+                predicted_player = process_video(video_path)
+                print(f"The swing in '{video_file}' is most similar to: {predicted_player}")
+            except Exception as e:
+                print(f"Error processing '{video_file}': {e}")
 
